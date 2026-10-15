@@ -1,0 +1,37 @@
+# The idea of this code is to is to perform recursive file searching and stages the matched assets in memory, leaving them selected and ready for downstream processing.
+
+import os, fnmatch
+
+from qgis.PyQt.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+
+def buscador(ruta, criterio):
+    criterio = criterio.lower()
+    for k in os.walk(ruta):
+        y = [archivo for archivo in k[2] if fnmatch.fnmatch(archivo.lower(), criterio)]
+        for kk in y:
+            yield os.path.join(k[0], kk)
+
+ruta_usuario = QFileDialog.getExistingDirectory(None, "Selecciona la carpeta de búsqueda", "C:\\")
+
+if ruta_usuario:
+    ruta_usuario = os.path.normpath(ruta_usuario)
+    criterio_usuario, ok = QInputDialog.getText(None, "Buscar Capas", "Introduce el criterio de búsqueda (ej: *.shp):")
+    
+    if ok and criterio_usuario:
+        ss = buscador(ruta_usuario, criterio_usuario)
+        lista_encontrada = list(ss)
+        
+        
+        if lista_encontrada:
+            
+            texto_resultado = "\n".join(lista_encontrada)
+            
+            
+            QMessageBox.information(None, "Capas Encontradas", f"Se encontraron {len(lista_encontrada)} archivos:\n\n{texto_resultado}")
+        else:
+            QMessageBox.warning(None, "Sin resultados", "No se encontró ningún archivo con ese criterio.")
+            
+    else:
+        print("Búsqueda de criterio cancelada.")
+else:
+    print("Selección de carpeta cancelada.")
