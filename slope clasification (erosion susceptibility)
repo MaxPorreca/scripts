@@ -1,0 +1,57 @@
+from qgis import processing
+from qgis.processing import alg
+
+# Umbrales de pendiente en GRADOS
+UMBRAL_BAJO = 3
+UMBRAL_MEDIO = 8
+
+@alg(name='Slope Classification for Erosion Susceptibility', label='Slope Classification for Erosion Susceptibility',
+     group='erosion', group_label='Erosion Tools')
+@alg.input(type=alg.RASTER_LAYER, name='INPUT_DEM', label='Input DEM Layer')
+@alg.input(type=alg.RASTER_LAYER_DEST, name='OUTPUT_MAP', label='Erosion Risk Output')
+def water_erosion_risk_map(instance, parameters, context, feedback, inputs):
+    """
+    Clasifica la pendiente de un DEM en 3 clases de riesgo de erosión hídrica:
+    1 = bajo, 2 = medio, 3 = alto. Considera solo la pendiente (en grados).
+    El DEM debe estar en un CRS proyectado.
+    """
+    dem = instance.parameterAsRasterLayer(parameters, 'INPUT_DEM', context)
+    if dem is None or not dem.isValid():
+        raise ValueError('El DEM de entrada no es válido.')
+    if dem.crs().isGeographic():
+        feedback.pushWarning('El DEM está en CRS geográfico: conviene reproyectarlo.')
+
+    destino = instance.parameterAsOutputLayer(parameters, 'OUTPUT_MAP', context)
+
+    # 1. Pendiente (grados)
+    res_slope = processing.run(
+        'native:slope',
+        {'INPUT': dem, 'Z_FACTOR': 1, 'OUTPUT': 'TEMPORARY_OUTPUT'},
+        context=context, feedback=feedback, is_child_algorithm=True
+    )
+    ruta_pendiente = res_slope['OUTPUT']
+
+    # 2. Reclasificación con GDAL (trabaja con la ruta del archivo)
+    formula = (
+        f'1*(A<={UMBRAL_BAJO}) + '
+        f'2*((A>{UMBRAL_BAJO})*(A<={UMBRAL_MEDIO})) + '
+        f'3*(A>{UMBRAL_MEDIO})'
+    )
+    feedback.pushInfo(f'Fórmula: {formula}')
+
+    res_calc = processing.run(
+        'gdal:rastercalculator',
+        {
+            'INPUT_A': ruta_pendiente,
+            'BAND_A': 1,
+            'FORMULA': formula,
+            'NO_DATA': 0,   # las clases son 1-3, así que 0 queda libre como NoData
+            'RTYPE': 0,     # Byte
+            'OPTIONS': '',
+            'EXTRA': '',
+            'OUTPUT': destino,
+        },
+        context=context, feedback=feedback, is_child_algorithm=True
+    )
+
+    return {'OUTPUT_MAP': res_calc['OUTPUT']}
